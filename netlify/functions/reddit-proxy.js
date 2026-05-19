@@ -1,4 +1,4 @@
-// reddit-proxy.js - MAY 2026 DIAGNOSTIC VERSION
+// reddit-proxy.js - MAY 2026 STABLE VERSION (FOR WEB APPS)
 exports.handler = async (event) => {
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
@@ -11,13 +11,12 @@ exports.handler = async (event) => {
     try {
         const { REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT } = process.env;
 
-        // 1. Precise Credential Trimming
+        // 1. Clean Credentials
         const id = REDDIT_CLIENT_ID.trim();
         const secret = REDDIT_CLIENT_SECRET.trim();
-        // FORCE a very standard User-Agent format to bypass bot detection
-        const agent = REDDIT_USER_AGENT ? REDDIT_USER_AGENT.trim() : "web:ProblemFinder:v1.0 (by /u/RubyFishSimon)";
+        const agent = REDDIT_USER_AGENT.trim();
 
-        // 2. Auth Step
+        // 2. Get Access Token
         const authHeader = `Basic ${Buffer.from(`${id}:${secret}`).toString('base64')}`;
         const tokenResponse = await fetch('https://www.reddit.com/api/v1/access_token', {
             method: 'POST',
@@ -29,22 +28,24 @@ exports.handler = async (event) => {
             body: 'grant_type=client_credentials'
         });
 
-        // --- DIAGNOSTIC CHECK 1 ---
-        const tokenRaw = await tokenResponse.text();
-        if (!tokenResponse.ok) {
-            console.error(`[Reddit Auth Error] Status: ${tokenResponse.status}. Body preview: ${tokenRaw.substring(0, 200)}`);
-            throw new Error(`Reddit rejected credentials. Check Netlify logs for body.`);
-        }
-        const tokenData = JSON.parse(tokenRaw);
+        const tokenData = await tokenResponse.json();
+        if (!tokenResponse.ok) throw new Error(`Reddit Auth Failed: ${tokenResponse.status}`);
 
-        // 3. Search Step
+        // 3. Parse Frontend Request
         const body = JSON.parse(event.body);
-        const { searchTerm, niche, limit = 25, timeFilter = 'all', after = null, type = 'search', subreddit = '' } = body;
+        const { searchTerm, niche, limit = 25, timeFilter = 'all', after = null, type = 'about', subreddit = '' } = body;
 
-        let url = type === 'about' 
-            ? `https://oauth.reddit.com/r/${subreddit}/about`
-            : `https://oauth.reddit.com/search?q=${encodeURIComponent(niche ? `( ${searchTerm} ) ${niche}` : searchTerm)}&limit=${limit}&t=${timeFilter}&sort=relevance${after ? `&after=${after}` : ''}`;
+        // 4. Construct URL (FIXED: REMOVED .json)
+        let url;
+        if (type === 'about') {
+            url = `https://oauth.reddit.com/r/${subreddit}/about`;
+        } else {
+            const query = niche ? `( ${searchTerm} ) ${niche}` : searchTerm;
+            url = `https://oauth.reddit.com/search?q=${encodeURIComponent(query)}&limit=${limit}&t=${timeFilter}&sort=relevance`;
+            if (after) url += `&after=${after}`;
+        }
 
+        // 5. Fetch from Reddit
         const redditRes = await fetch(url, {
             headers: {
                 'Authorization': `Bearer ${tokenData.access_token}`,
@@ -52,22 +53,16 @@ exports.handler = async (event) => {
             }
         });
 
-        // --- DIAGNOSTIC CHECK 2 ---
-        const searchRaw = await redditRes.text();
-        if (!redditRes.ok) {
-            console.error(`[Reddit Search Error] Status: ${redditRes.status}. Body preview: ${searchRaw.substring(0, 200)}`);
-            throw new Error(`Reddit search failed with status ${redditRes.status}`);
-        }
-
-        // Final Return
+        const data = await redditRes.json();
+        
         return {
             statusCode: 200,
             headers: corsHeaders,
-            body: searchRaw // It's already JSON text
+            body: JSON.stringify(data)
         };
 
     } catch (err) {
-        console.error("Proxy Crash Trace:", err.message);
+        console.error("Reddit Proxy Error:", err.message);
         return {
             statusCode: 500,
             headers: corsHeaders,
