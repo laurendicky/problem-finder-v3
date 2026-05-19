@@ -319,39 +319,60 @@ function showSamplePosts(summaryIndex, assignments, allPosts, usedPostIds) {
         `;
     }
 }
-
 async function getRelatedSearchTermsAI(audience) {
-    const prompt = `Given the target audience "${audience}", generate up to 5 related but distinct search terms or concepts that would help find communities for them. Think about activities, problems, life stages, and related interests. Respond ONLY with a valid JSON object with a single key "terms", which is an array of strings.`;
-    const openAIParams = { model: "gpt-5-mini", messages: [{ role: "system", content: "You are a creative brainstorming assistant that outputs only JSON." }, { role: "user", content: prompt }], temperature: 0.4, max_completion_tokens: 150, response_format: { "type": "json_object" } };
+    const prompt = `You are a market researcher. Generate 5 keywords for "${audience}". Respond strictly in JSON format: {"terms": []}`;
+    const openAIParams = { 
+        model: "gpt-5-mini", 
+        messages: [{ role: "developer", content: "JSON output only." }, { role: "user", content: prompt }],
+        response_format: { "type": "json_object" } 
+    };
     try {
         const response = await fetch(OPENAI_PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ openaiPayload: openAIParams }) });
-        if (!response.ok) throw new Error('AI keyword generation failed.');
         const data = await response.json();
-        const parsed = JSON.parse(data.openaiResponse);
+        
+        console.log("Raw Proxy Response:", data.openaiResponse); // The log suggested by Console AI
+
+        if (!data.openaiResponse || data.error) {
+            console.warn("AI failed or returned empty. Using empty fallback.");
+            return [];
+        }
+
+        const parsed = typeof data.openaiResponse === 'string' ? JSON.parse(data.openaiResponse) : data.openaiResponse;
         return parsed.terms || [];
     } catch (error) {
-        console.error("Error generating related search terms:", error);
-        return [];
+        console.error("Critical error in getRelatedSearchTermsAI:", error);
+        return []; 
     }
 }
+
 async function findSubredditsForGroup(groupName) {
     const relatedTerms = await getRelatedSearchTermsAI(groupName);
     const allTerms = [groupName, ...relatedTerms];
-    const prompt = `Based on the following audience and related keywords: [${allTerms.join(', ')}], suggest up to 20 relevant and active Reddit subreddits. Prioritize a variety of communities, including both large general ones and smaller niche ones. Provide your response ONLY as a JSON object with a single key "subreddits" which contains an array of subreddit names (without "r/").`;
-    const openAIParams = { model: "gpt-5-mini", messages: [{ role: "system", content: "You are an expert Reddit community finder providing answers in strict JSON format." }, { role: "user", content: prompt }], temperature: 0.2, max_completion_tokens: 300, response_format: { "type": "json_object" } };
+    const prompt = `Suggest 20 subreddits for [${allTerms.join(', ')}]. Respond strictly in JSON format: {"subreddits": []}`;
+    
+    const openAIParams = { 
+        model: "gpt-5-mini", 
+        messages: [{ role: "developer", content: "JSON only." }, { role: "user", content: prompt }],
+        response_format: { "type": "json_object" } 
+    };
     try {
         const response = await fetch(OPENAI_PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ openaiPayload: openAIParams }) });
-        if (!response.ok) throw new Error('OpenAI API request failed.');
         const data = await response.json();
-        const parsed = JSON.parse(data.openaiResponse);
-        if (!parsed.subreddits || !Array.isArray(parsed.subreddits)) throw new Error("AI response did not contain a 'subreddits' array.");
-        return parsed.subreddits;
+
+        if (!data.openaiResponse || data.error) return [];
+
+        const parsed = typeof data.openaiResponse === 'string' ? JSON.parse(data.openaiResponse) : data.openaiResponse;
+        return parsed.subreddits || [];
     } catch (error) {
-        console.error("Error finding subreddits:", error);
-        alert("Sorry, I couldn't find any relevant communities. Please try another group name.");
+        console.error("Critical error in findSubredditsForGroup:", error);
         return [];
     }
 }
+
+
+
+
+
 async function fetchCommentsForPosts(postIds, batchSize = 5) {
     let allComments = [];
     console.log(`Fetching comments for ${postIds.length} posts...`);
