@@ -1,7 +1,12 @@
 {
-  "name": "simple-openai-proxy",
-  "version": "1.0.0",
+  "name": "problem-pulse-2026-engine",
+  "version": "3.0.0",
+  "description": "Monetized Market Intelligence Tool - GPT-5.4-mini Powered",
+  "main": "index.js",
   "dependencies": {
-    "openai": "^4.0.0"
+    "openai": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
