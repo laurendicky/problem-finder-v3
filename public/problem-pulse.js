@@ -354,33 +354,34 @@ async function getRelatedSearchTermsAI(audience) {
     }
 }
 
-
 async function findSubredditsForGroup(groupName) {
     const relatedTerms = await getRelatedSearchTermsAI(groupName);
     const allTerms = [groupName, ...relatedTerms];
-    const prompt = `Suggest 20 subreddits for [${allTerms.join(', ')}]. Respond strictly in JSON format: {"subreddits": []}`;
     
-    const openAIParams = { 
-        model: "gpt-5-mini", 
-        messages: [{ role: "developer", content: "JSON only." }, { role: "user", content: prompt }],
-        response_format: { "type": "json_object" } 
+    // We send searchTerm as the main group name to the proxy
+    const payload = { 
+        searchTerm: groupName, 
+        niche: relatedTerms.join(' OR '), 
+        limit: 25 
     };
+
     try {
-        const response = await fetch(OPENAI_PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ openaiPayload: openAIParams }) });
+        const response = await fetch(REDDIT_PROXY_URL, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(payload) 
+        });
         const data = await response.json();
-
-        if (!data.openaiResponse || data.error) return [];
-
-        const parsed = typeof data.openaiResponse === 'string' ? JSON.parse(data.openaiResponse) : data.openaiResponse;
-        return parsed.subreddits || [];
+        // Return results (The helper function deduplicatePosts is already in your 3000 lines)
+        if (data.data && data.data.children) {
+            return data.data.children;
+        }
+        return [];
     } catch (error) {
-        console.error("Critical error in findSubredditsForGroup:", error);
+        console.error("Reddit Search Failed:", error);
         return [];
     }
 }
-
-
-
 
 
 async function fetchCommentsForPosts(postIds, batchSize = 5) {
