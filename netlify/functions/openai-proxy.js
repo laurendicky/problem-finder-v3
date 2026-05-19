@@ -27,14 +27,17 @@ exports.handler = async (event) => {
 
     const openai = new OpenAI({ apiKey, timeout: 60000 });
 
-    // --- 2026 SMART TRANSLATION ---
-    // 1. Fix the token parameter error you saw in the logs
+    // --- 2026 DOCUMENTATION MATCHING ---
+    // 1. Rename max_tokens to match GPT-5 specs
     if (openaiPayload.max_tokens) {
       openaiPayload.max_completion_tokens = openaiPayload.max_tokens;
-      delete openaiPayload.max_tokens; 
+      delete openaiPayload.max_tokens;
     }
 
-    // 2. Standardize roles for GPT-5
+    // 2. Ensure model is exactly as listed in your OpenAI dashboard
+    // This allows you to use 'gpt-5-mini' in your script
+    
+    // 3. Convert 'system' role to 'developer' for GPT-5 compatibility
     if (openaiPayload.messages) {
       openaiPayload.messages = openaiPayload.messages.map(m => 
         m.role === 'system' ? { ...m, role: 'developer' } : m
@@ -52,6 +55,7 @@ exports.handler = async (event) => {
       }),
     };
   } catch (error) {
+    console.error('Proxy Error:', error.message);
     return {
       statusCode: 500,
       headers,
