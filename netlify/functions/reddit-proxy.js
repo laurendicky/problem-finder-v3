@@ -1,4 +1,4 @@
-// reddit-proxy.js - MAY 2026 STABLE VERSION (FOR WEB APPS)
+// reddit-proxy.js - MAY 2026 FINAL STABLE VERSION
 exports.handler = async (event) => {
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
@@ -11,19 +11,14 @@ exports.handler = async (event) => {
     try {
         const { REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT } = process.env;
 
-        // 1. Clean Credentials
-        const id = REDDIT_CLIENT_ID.trim();
-        const secret = REDDIT_CLIENT_SECRET.trim();
-        const agent = REDDIT_USER_AGENT.trim();
-
-        // 2. Get Access Token
-        const authHeader = `Basic ${Buffer.from(`${id}:${secret}`).toString('base64')}`;
+        // 1. Auth Step
+        const authHeader = `Basic ${Buffer.from(`${REDDIT_CLIENT_ID.trim()}:${REDDIT_CLIENT_SECRET.trim()}`).toString('base64')}`;
         const tokenResponse = await fetch('https://www.reddit.com/api/v1/access_token', {
             method: 'POST',
             headers: {
                 'Authorization': authHeader,
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': agent
+                'User-Agent': REDDIT_USER_AGENT.trim()
             },
             body: 'grant_type=client_credentials'
         });
@@ -31,13 +26,14 @@ exports.handler = async (event) => {
         const tokenData = await tokenResponse.json();
         if (!tokenResponse.ok) throw new Error(`Reddit Auth Failed: ${tokenResponse.status}`);
 
-        // 3. Parse Frontend Request
+        // 2. Parse Frontend Request
         const body = JSON.parse(event.body);
-        const { searchTerm, niche, limit = 25, timeFilter = 'all', after = null, type = 'about', subreddit = '' } = body;
+        // FIX: Default type is now 'search' to match your tool's main function
+        const { searchTerm, niche, limit = 25, timeFilter = 'all', after = null, type = 'search', subreddit = '' } = body;
 
-        // 4. Construct URL (FIXED: REMOVED .json)
+        // 3. Construct URL
         let url;
-        if (type === 'about') {
+        if (type === 'about' && subreddit) {
             url = `https://oauth.reddit.com/r/${subreddit}/about`;
         } else {
             const query = niche ? `( ${searchTerm} ) ${niche}` : searchTerm;
@@ -45,13 +41,23 @@ exports.handler = async (event) => {
             if (after) url += `&after=${after}`;
         }
 
-        // 5. Fetch from Reddit
+        console.log(`[REDDIT PROXY] Calling: ${url}`);
+
+        // 4. Fetch from Reddit
         const redditRes = await fetch(url, {
             headers: {
                 'Authorization': `Bearer ${tokenData.access_token}`,
-                'User-Agent': agent
+                'User-Agent': REDDIT_USER_AGENT.trim()
             }
         });
+
+        // 5. Check if response is valid JSON
+        const contentType = redditRes.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            const errorText = await redditRes.text();
+            console.error(`[REDDIT ERROR] Expected JSON but got HTML. URL: ${url}`);
+            throw new Error(`Reddit returned a webpage instead of data. Check Netlify logs.`);
+        }
 
         const data = await redditRes.json();
         
