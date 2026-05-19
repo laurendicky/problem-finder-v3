@@ -3,8 +3,8 @@
 // =================================================================================
 
 // --- 1. GLOBAL VARIABLES & CONSTANTS ---
-const OPENAI_PROXY_URL = 'https://problem-finder-v3.netlify.app/.netlify/functions/openai-proxy';
-const REDDIT_PROXY_URL = 'https://problem-finder-v3.netlify.app/.netlify/functions/reddit-proxy';
+const OPENAI_PROXY_URL = '/.netlify/functions/openai-proxy';
+const REDDIT_PROXY_URL = '/.netlify/functions/reddit-proxy';
 const HARD_MIN_SUBSCRIBERS = 1000;
 const HARD_MIN_ACTIVE_USERS = 0;
 const LENIENT_MIN_SUBSCRIBERS = 500;
