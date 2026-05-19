@@ -1,8 +1,6 @@
 {
   "name": "problem-pulse-2026-engine",
   "version": "3.0.0",
-  "description": "Monetized Market Intelligence Tool - GPT-5.4-mini Powered",
-  "main": "index.js",
   "dependencies": {
     "openai": "^6.0.0"
   },
