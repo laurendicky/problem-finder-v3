@@ -1,13 +1,9 @@
 const OpenAI = require('openai');
 
-// --- 2026 UPDATED WHITELIST ---
 const allowedOrigins = [
-  'https://minky.ai',
-  'https://www.minky.ai',
-  'https://problempop.io',
-  'https://www.problempop.io',
-  'http://localhost:8888',
-  // ADD YOUR NEW NETLIFY URL HERE (e.g., 'https://problem-finder-v3.netlify.app')
+  'https://minky.ai', 'https://www.minky.ai',
+  'https://problempop.io', 'https://www.problempop.io',
+  'http://localhost:8888'
 ];
 
 exports.handler = async (event) => {
@@ -17,58 +13,57 @@ exports.handler = async (event) => {
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 
-  // Dynamic Whitelisting: Grant access if origin matches or if it's a Netlify preview URL
   if (allowedOrigins.includes(origin) || (origin && origin.includes('netlify.app'))) {
     headers['Access-Control-Allow-Origin'] = origin;
   }
 
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers, body: '' };
-  }
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers, body: '' };
 
   try {
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error('API key missing in environment variables.');
-
     const { openaiPayload } = JSON.parse(event.body);
-    if (!openaiPayload) throw new Error('No payload provided.');
 
-    // --- 2026 SDK INITIALIZATION ---
-    // We increase the timeout to 60s to handle massive 1M token context windows
-    const openai = new OpenAI({ 
-      apiKey,
-      timeout: 60000 
-    });
+    if (!apiKey) throw new Error('API Key missing in Netlify Environment Variables.');
 
-    console.log(`[2026 PROXY] Dispatching request to: ${openaiPayload.model}`);
+    const openai = new OpenAI({ apiKey, timeout: 60000 });
 
-    const chatCompletion = await openai.chat.completions.create({
-      ...openaiPayload,
-      // Ensure we utilize the 2026 'High Fidelity' JSON mode if requested
-      response_format: openaiPayload.response_format || { type: "json_object" }
-    });
+    // --- 2026 SAFETY ADAPTATION ---
+    // 1. Swap 'system' for 'developer' role (GPT-5 Standard)
+    if (openaiPayload.messages) {
+      openaiPayload.messages = openaiPayload.messages.map(m => 
+        m.role === 'system' ? { ...m, role: 'developer' } : m
+      );
 
-    // Log the usage so you can track your profit margins in Netlify logs
-    const usage = chatCompletion.usage;
-    console.log(`[COST LOG] Tokens Used: ${usage.total_tokens} (Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens})`);
-    if (usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens) {
-        console.log(`[SAVINGS LOG] Cached Tokens: ${usage.prompt_tokens_details.cached_tokens} (90% discount applied!)`);
+      // 2. Ensure "JSON" is in the prompt if JSON mode is on
+      if (openaiPayload.response_format?.type === 'json_object') {
+        const hasJsonWord = JSON.stringify(openaiPayload.messages).toLowerCase().includes('json');
+        if (!hasJsonWord) {
+          openaiPayload.messages[0].content += " Respond in JSON format.";
+        }
+      }
     }
+
+    const chatCompletion = await openai.chat.completions.create(openaiPayload);
 
     return {
       statusCode: 200,
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         openaiResponse: chatCompletion.choices[0].message.content,
-        usage: usage // Send usage back so we can track it on the frontend too
+        usage: chatCompletion.usage
       }),
     };
   } catch (error) {
-    console.error('Proxy Error:', error.message);
+    // CRITICAL: We now return the actual error message so you can see it in the browser console
+    console.error('2026 Proxy Error:', error.message);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ 
+        error: "OpenAI Proxy Failed", 
+        message: error.message,
+        suggestion: "Check your OPENAI_API_KEY in Netlify Site Settings." 
+      }),
     };
   }
 };
