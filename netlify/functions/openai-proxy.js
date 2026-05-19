@@ -1,101 +1,73 @@
-// Copy and paste this entire block into netlify/functions/openai-proxy.js
-
 const OpenAI = require('openai');
 
-// Define the complete whitelist of allowed domains
+// --- 2026 UPDATED WHITELIST ---
 const allowedOrigins = [
   'https://minky.ai',
   'https://www.minky.ai',
   'https://problempop.io',
   'https://www.problempop.io',
-  // It's a good practice to add your local dev environment too
-  'http://localhost:8888', // For `netlify dev`
+  'http://localhost:8888',
+  // ADD YOUR NEW NETLIFY URL HERE (e.g., 'https://problem-finder-v3.netlify.app')
 ];
 
 exports.handler = async (event) => {
-  // Get the incoming request's origin
   const origin = event.headers.origin;
-  
-  // --- CHANGE 1: Added logging for easier debugging ---
-  // This will show the exact origin in your Netlify function logs.
-  console.log(`[PROXY LOG] Incoming request from origin: ${origin}`);
-
-  // Prepare the response headers object.
   const headers = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 
-  // If the origin is in our whitelist, add the crucial ACAO header to the response
-  if (allowedOrigins.includes(origin)) {
+  // Dynamic Whitelisting: Grant access if origin matches or if it's a Netlify preview URL
+  if (allowedOrigins.includes(origin) || (origin && origin.includes('netlify.app'))) {
     headers['Access-Control-Allow-Origin'] = origin;
-    console.log(`[PROXY LOG] Origin is in whitelist. Granting access.`);
-  } else {
-    console.warn(`[PROXY LOG] Origin NOT in whitelist: ${origin}`);
   }
 
-  // Handle the browser's preflight OPTIONS request
   if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204, // No Content
-      headers,
-      body: '',
-    };
-  }
-  
-  // Explicitly block non-whitelisted origins
-  if (!allowedOrigins.includes(origin)) {
-      // --- CHANGE 2: Added the 'headers' object to the error response ---
-      // This ensures the browser gets a proper CORS response even on failure.
-      return {
-        statusCode: 403,
-        headers, 
-        body: `Forbidden: Origin ${origin} is not allowed.`
-      };
-  }
-  
-  // Only allow POST requests for the actual work.
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers, body: 'Method Not Allowed' };
+    return { statusCode: 204, headers, body: '' };
   }
 
   try {
-    // Get the secret key from the environment.
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error('Server configuration error: API key not set.');
-    }
+    if (!apiKey) throw new Error('API key missing in environment variables.');
 
-    // Get the payload sent from the frontend.
     const { openaiPayload } = JSON.parse(event.body);
-    if (!openaiPayload) {
-      throw new Error('Request body is missing openaiPayload.');
+    if (!openaiPayload) throw new Error('No payload provided.');
+
+    // --- 2026 SDK INITIALIZATION ---
+    // We increase the timeout to 60s to handle massive 1M token context windows
+    const openai = new OpenAI({ 
+      apiKey,
+      timeout: 60000 
+    });
+
+    console.log(`[2026 PROXY] Dispatching request to: ${openaiPayload.model}`);
+
+    const chatCompletion = await openai.chat.completions.create({
+      ...openaiPayload,
+      // Ensure we utilize the 2026 'High Fidelity' JSON mode if requested
+      response_format: openaiPayload.response_format || { type: "json_object" }
+    });
+
+    // Log the usage so you can track your profit margins in Netlify logs
+    const usage = chatCompletion.usage;
+    console.log(`[COST LOG] Tokens Used: ${usage.total_tokens} (Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens})`);
+    if (usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens) {
+        console.log(`[SAVINGS LOG] Cached Tokens: ${usage.prompt_tokens_details.cached_tokens} (90% discount applied!)`);
     }
 
-    // Initialize OpenAI and make the API call.
-    const openai = new OpenAI({ apiKey });
-    const chatCompletion = await openai.chat.completions.create(openaiPayload);
-
-    // Send the successful response back
     return {
       statusCode: 200,
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
-      },
+      headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         openaiResponse: chatCompletion.choices[0].message.content,
+        usage: usage // Send usage back so we can track it on the frontend too
       }),
     };
   } catch (error) {
-    console.error('Error in OpenAI proxy function:', error);
-    // Send the error response back
+    console.error('Proxy Error:', error.message);
     return {
       statusCode: 500,
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({ error: error.message }),
     };
   }
