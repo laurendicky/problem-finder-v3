@@ -4,7 +4,7 @@ exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Origin': '*'
+    'Access-Control-Allow-Origin': '*' 
   };
 
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers, body: '' };
@@ -12,23 +12,38 @@ exports.handler = async (event) => {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
     const { openaiPayload } = JSON.parse(event.body);
-    const openai = new OpenAI({ apiKey, timeout: 55000 }); // High timeout
+    const openai = new OpenAI({ apiKey, timeout: 60000 });
 
-    // --- MAY 2026 STABILITY OVERRIDES ---
-    openaiPayload.model = "gpt-5-mini";
-    openaiPayload.reasoning_effort = "low"; // FORCE SPEED TO PREVENT TIMEOUT
-    delete openaiPayload.temperature; // Prevent 400 error
+    // --- MAY 2026 TIER 3 OPTIMIZATIONS ---
     
-    if (openaiPayload.max_tokens) {
-      openaiPayload.max_completion_tokens = openaiPayload.max_tokens;
-      delete openaiPayload.max_tokens;
+    // 1. Force exact model name from your dashboard
+    openaiPayload.model = "gpt-5-mini";
+
+    // 2. Remove old-school parameters that conflict with Reasoning
+    delete openaiPayload.temperature;
+    delete openaiPayload.max_tokens; // We use the proxy to map this below
+
+    // 3. Ensure Reasoning Effort is valid
+    openaiPayload.reasoning_effort = "low"; 
+
+    // 4. Map 'system' to 'developer' (GPT-5 strict requirement)
+    if (openaiPayload.messages) {
+      openaiPayload.messages = openaiPayload.messages.map(m => 
+        m.role === 'system' ? { ...m, role: 'developer' } : m
+      );
     }
 
     const chatCompletion = await openai.chat.completions.create(openaiPayload);
-    const content = chatCompletion.choices[0].message.content;
+    const message = chatCompletion.choices[0].message;
 
-    // IF CONTENT IS EMPTY, SEND A VALID JSON ERROR INSTEAD
-    if (!content) throw new Error("AI returned an empty message.");
+    // --- NEW: REFUSAL TRACKING ---
+    if (message.refusal) {
+      console.error('AI REFUSAL:', message.refusal);
+      throw new Error(`AI Refused: ${message.refusal}`);
+    }
+
+    const content = message.content;
+    if (!content) throw new Error("AI returned empty content. Reasoning might have failed.");
 
     return {
       statusCode: 200,
@@ -37,14 +52,13 @@ exports.handler = async (event) => {
     };
 
   } catch (error) {
-    console.error('Proxy Failure:', error.message);
+    console.error('2026 Proxy Error:', error.message);
     return {
-      statusCode: 200, // Send 200 but with error data so frontend doesn't crash
+      statusCode: 500,
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         error: true, 
-        message: error.message,
-        openaiResponse: '{"terms": [], "subreddits": []}' // Send empty valid JSON as fallback
+        message: error.message 
       }),
     };
   }
