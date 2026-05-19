@@ -23,24 +23,22 @@ exports.handler = async (event) => {
     const apiKey = process.env.OPENAI_API_KEY;
     const { openaiPayload } = JSON.parse(event.body);
 
-    if (!apiKey) throw new Error('API Key missing in Netlify Environment Variables.');
+    if (!apiKey) throw new Error('API Key missing.');
 
     const openai = new OpenAI({ apiKey, timeout: 60000 });
 
-    // --- 2026 SAFETY ADAPTATION ---
-    // 1. Swap 'system' for 'developer' role (GPT-5 Standard)
+    // --- 2026 SMART TRANSLATION ---
+    // 1. Fix the token parameter error you saw in the logs
+    if (openaiPayload.max_tokens) {
+      openaiPayload.max_completion_tokens = openaiPayload.max_tokens;
+      delete openaiPayload.max_tokens; 
+    }
+
+    // 2. Standardize roles for GPT-5
     if (openaiPayload.messages) {
       openaiPayload.messages = openaiPayload.messages.map(m => 
         m.role === 'system' ? { ...m, role: 'developer' } : m
       );
-
-      // 2. Ensure "JSON" is in the prompt if JSON mode is on
-      if (openaiPayload.response_format?.type === 'json_object') {
-        const hasJsonWord = JSON.stringify(openaiPayload.messages).toLowerCase().includes('json');
-        if (!hasJsonWord) {
-          openaiPayload.messages[0].content += " Respond in JSON format.";
-        }
-      }
     }
 
     const chatCompletion = await openai.chat.completions.create(openaiPayload);
@@ -54,16 +52,10 @@ exports.handler = async (event) => {
       }),
     };
   } catch (error) {
-    // CRITICAL: We now return the actual error message so you can see it in the browser console
-    console.error('2026 Proxy Error:', error.message);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ 
-        error: "OpenAI Proxy Failed", 
-        message: error.message,
-        suggestion: "Check your OPENAI_API_KEY in Netlify Site Settings." 
-      }),
+      body: JSON.stringify({ error: error.message }),
     };
   }
 };
