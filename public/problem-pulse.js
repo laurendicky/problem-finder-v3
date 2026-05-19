@@ -1325,8 +1325,7 @@ async function generateAndRenderBrandBrief(itemName, itemType) {
             3.  "table_stakes": An array of 3 bullet points describing the absolute must-have features or benefits for any product in this category.
             4.  "disruption_opportunities": An array of 3 bullet points describing common frustrations or unsolved problems across the entire category that a new product could solve.`;
 
-        const openAIParams = { model: "gpt-5-mini", messages: [{ role: "system", content: "You are an analyst providing structured JSON output." }, { role: "user", content: `${prompt}\n\nUser Comments:\n${topPostsText}` }], temperature: 0.2, response_format: { "type": "json_object" } };
-
+            const openAIParams = { model: "gpt-5-mini", messages: [{ role: "developer", content: "You are a market research analyst providing deep insights in structured JSON format." }, { role: "user", content: `${prompt}\n\nUser Comments:\n${topPostsText}` }], temperature: 1, reasoning_effort: "medium", response_format: { "type": "json_object" } };
         const briefPromise = fetch(OPENAI_PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ openaiPayload: openAIParams }) }).then(res => res.json());
 
         const selectedSubreddits = Array.from(document.querySelectorAll('#subreddit-choices input:checked')).map(cb => cb.value);
