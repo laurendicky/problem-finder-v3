@@ -319,31 +319,41 @@ function showSamplePosts(summaryIndex, assignments, allPosts, usedPostIds) {
         `;
     }
 }
+
+
 async function getRelatedSearchTermsAI(audience) {
-    const prompt = `You are a market researcher. Generate 5 keywords for "${audience}". Respond strictly in JSON format: {"terms": []}`;
+    // Keep it extremely simple for the first step
+    const prompt = `Give me 5 search terms for people interested in "${audience}". Output JSON: {"terms": []}`;
+    
     const openAIParams = { 
         model: "gpt-5-mini", 
-        messages: [{ role: "developer", content: "JSON output only." }, { role: "user", content: prompt }],
+        messages: [{ role: "user", content: prompt }],
         response_format: { "type": "json_object" } 
     };
+
     try {
-        const response = await fetch(OPENAI_PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ openaiPayload: openAIParams }) });
+        const response = await fetch(OPENAI_PROXY_URL, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ openaiPayload: openAIParams }) 
+        });
+
         const data = await response.json();
         
-        console.log("Raw Proxy Response:", data.openaiResponse); // The log suggested by Console AI
-
-        if (!data.openaiResponse || data.error) {
-            console.warn("AI failed or returned empty. Using empty fallback.");
+        // If the proxy sent an error, log it specifically
+        if (data.error) {
+            console.error("OpenAI Error Message:", data.message);
             return [];
         }
 
         const parsed = typeof data.openaiResponse === 'string' ? JSON.parse(data.openaiResponse) : data.openaiResponse;
         return parsed.terms || [];
     } catch (error) {
-        console.error("Critical error in getRelatedSearchTermsAI:", error);
+        console.error("Keyword generation failed:", error);
         return []; 
     }
 }
+
 
 async function findSubredditsForGroup(groupName) {
     const relatedTerms = await getRelatedSearchTermsAI(groupName);
@@ -2700,7 +2710,7 @@ async function generateAndRenderPowerPhrases(posts, audienceContext) {
                     { role: "system", content: "You are an expert at defining niche community jargon. Provide only a single sentence." },
                     { role: "user", content: prompt }
                 ],
-                temperature: 0.1,
+                temperature: 1,
                 max_completion_tokens: 100,
             };
             const response = await fetch(OPENAI_PROXY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ openaiPayload: openAIParams }) });
