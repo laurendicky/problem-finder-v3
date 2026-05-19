@@ -1,10 +1,13 @@
-const fetch = require('node-fetch');
+// No external 'fetch' library needed - Node 20+ handles it natively
 
-// Helper to get Reddit Access Token (2026 Standard)
 async function getRedditToken() {
     const { REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT } = process.env;
     
-    // Create the Base64 string for the header
+    // Safety check: ensure variables exist
+    if (!REDDIT_CLIENT_ID || !REDDIT_CLIENT_SECRET) {
+        throw new Error("Missing Reddit credentials in Netlify environment variables.");
+    }
+
     const authString = Buffer.from(`${REDDIT_CLIENT_ID}:${REDDIT_CLIENT_SECRET}`).toString('base64');
     
     try {
@@ -13,14 +16,15 @@ async function getRedditToken() {
             headers: {
                 'Authorization': `Basic ${authString}`,
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': REDDIT_USER_AGENT
+                'User-Agent': REDDIT_USER_AGENT || 'ProblemPulse/1.0'
             },
-            body: 'grant_type=client_credentials'
+            // 2026 Standard: Using URLSearchParams for cleaner form data
+            body: new URLSearchParams({ 'grant_type': 'client_credentials' })
         });
 
         if (!response.ok) {
-            const errBody = await response.text();
-            console.error(`[REDDIT ERROR] Status: ${response.status}. Body: ${errBody}`);
+            const errText = await response.text();
+            console.error(`[REDDIT AUTH ERROR] ${response.status}: ${errText}`);
             throw new Error(`Reddit Auth Failed: ${response.status}`);
         }
 
@@ -50,7 +54,6 @@ exports.handler = async (event) => {
         if (type === 'about') {
             url = `https://oauth.reddit.com/r/${subreddit}/about`;
         } else {
-            // Standard Search
             const query = niche ? `( ${searchTerm} ) ${niche}` : searchTerm;
             url = `https://oauth.reddit.com/search?q=${encodeURIComponent(query)}&limit=${limit}&t=${timeFilter}&sort=relevance${after ? `&after=${after}` : ''}`;
         }
@@ -58,7 +61,7 @@ exports.handler = async (event) => {
         const redditRes = await fetch(url, {
             headers: {
                 'Authorization': `Bearer ${token}`,
-                'User-Agent': process.env.REDDIT_USER_AGENT
+                'User-Agent': process.env.REDDIT_USER_AGENT || 'ProblemPulse/1.0'
             }
         });
 
@@ -70,6 +73,7 @@ exports.handler = async (event) => {
         };
 
     } catch (err) {
+        console.error("Reddit Proxy Handler Error:", err.message);
         return {
             statusCode: 500,
             headers,
